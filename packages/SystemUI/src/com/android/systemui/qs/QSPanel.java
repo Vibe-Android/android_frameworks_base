@@ -212,6 +212,7 @@ public class QSPanel extends LinearLayout implements Tunable {
         mBrightnessView = view;
 
         setBrightnessViewMargin();
+        updateBrightnessVisibility();
 
         mMovableContentStartIndex++;
     }
@@ -351,14 +352,28 @@ public class QSPanel extends LinearLayout implements Tunable {
     @Override
     public void onTuningChanged(String key, String newValue) {
         if (QS_SHOW_BRIGHTNESS.equals(key) && mBrightnessView != null) {
-            updateViewVisibilityForTuningValue(mBrightnessView, newValue);
+            updateBrightnessVisibility();
         }
     }
 
-    private void updateViewVisibilityForTuningValue(View view, @Nullable String newValue) {
-        view.setVisibility(TunerService.parseIntegerSwitch(newValue, true) ? VISIBLE : GONE);
+    private void updateBrightnessVisibility() {
+        if (mBrightnessView != null) {
+            boolean show = android.provider.Settings.System.getIntForUser(
+                    mContext.getContentResolver(),
+                    com.android.systemui.vibe.VibeSettingsConstants.KEY_QS_SHOW_BRIGHTNESS_SLIDER,
+                    com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_QS_SHOW_BRIGHTNESS_SLIDER,
+                    android.os.UserHandle.USER_CURRENT) != 0;
+            mBrightnessView.setVisibility(show ? VISIBLE : GONE);
+        }
     }
 
+    private final android.database.ContentObserver mVibeBrightnessObserver =
+            new android.database.ContentObserver(new android.os.Handler(android.os.Looper.getMainLooper())) {
+        @Override
+        public void onChange(boolean selfChange) {
+            updateBrightnessVisibility();
+        }
+    };
 
     @Nullable
     View getBrightnessView() {
@@ -393,6 +408,7 @@ public class QSPanel extends LinearLayout implements Tunable {
         updatePageIndicator();
 
         setBrightnessViewMargin();
+        updateBrightnessVisibility();
 
         if (mTileLayout != null) {
             mTileLayout.updateResources();
@@ -439,9 +455,28 @@ public class QSPanel extends LinearLayout implements Tunable {
     }
 
     @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        try {
+            mContext.getContentResolver().registerContentObserver(
+                    android.provider.Settings.System.getUriFor(
+                            com.android.systemui.vibe.VibeSettingsConstants.KEY_QS_SHOW_BRIGHTNESS_SLIDER),
+                    false,
+                    mVibeBrightnessObserver,
+                    android.os.UserHandle.USER_ALL);
+        } catch (Exception ignored) {
+        }
+        updateBrightnessVisibility();
+    }
+
+    @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         mHadConfigurationChangeWhileDetached = false;
+        try {
+            mContext.getContentResolver().unregisterContentObserver(mVibeBrightnessObserver);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override

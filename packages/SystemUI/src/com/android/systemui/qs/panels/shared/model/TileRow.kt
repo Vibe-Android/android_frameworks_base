@@ -21,12 +21,13 @@ interface SizedTile<T> {
     val tile: T
     val width: Int
     val isIcon: Boolean
-        get() = width == 1
+        get() = width <= 2
 }
 
 data class SizedTileImpl<T>(
     override val tile: T,
     override val width: Int,
+    override val isIcon: Boolean = (width <= 2),
 ) : SizedTile<T>
 
 /** Represents a row of [SizedTile] with a maximum width of [columns] */
@@ -46,7 +47,7 @@ class TileRow<T>(private val columns: Int) {
     }
 
     fun findLastIconTile(): SizedTile<T>? {
-        return _tiles.findLast { it.width == 1 }
+        return _tiles.findLast { it.isIcon }
     }
 
     fun removeTile(tile: SizedTile<T>) {

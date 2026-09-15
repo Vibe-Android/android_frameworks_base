@@ -54,12 +54,16 @@ constructor(
             arrayOf(
                 columnsWithMediaViewModel.columns,
                 columnsWithMediaViewModel.largeSpan,
+                columnsWithMediaViewModel.compactSpan,
                 iconTilesViewModel.largeTilesState.value,
             )
 
     override fun splitIntoPages(tiles: List<TileViewModel>, rows: Int): List<List<TileViewModel>> {
         return splitInRows(
-                tiles.map { SizedTileImpl(it, widthOf(it.spec)) },
+                tiles.map {
+                    val isLarge = iconTilesViewModel.largeTilesState.value.contains(it.spec)
+                    SizedTileImpl(it, widthOf(it.spec), isIcon = !isLarge)
+                },
                 columnsWithMediaViewModel.columns,
             )
             .chunked(rows)
@@ -69,7 +73,7 @@ constructor(
     private fun widthOf(spec: TileSpec): Int {
         return if (iconTilesViewModel.largeTilesState.value.contains(spec))
             columnsWithMediaViewModel.largeSpan
-        else 1
+        else columnsWithMediaViewModel.compactSpan
     }
 
     override suspend fun onActivated(): Nothing {

@@ -40,6 +40,7 @@ class EditTileListState(
     initialLargeTiles: Set<TileSpec>,
     val columns: Int,
     val largeTilesSpan: Int,
+    val compactSpan: Int = 1,
 ) : DragAndDropState {
     override var draggedCell by mutableStateOf<SizedTile<EditTileViewModel>?>(null)
         private set
@@ -192,7 +193,12 @@ class EditTileListState(
 
     private fun List<EditTileViewModel>.toGridCells(largeTiles: Set<TileSpec>): List<GridCell> {
         return map {
-                SizedTileImpl(it, if (largeTiles.contains(it.tileSpec)) largeTilesSpan else 1)
+                val isLarge = largeTiles.contains(it.tileSpec)
+                SizedTileImpl(
+                    it,
+                    if (isLarge) largeTilesSpan else compactSpan,
+                    isIcon = !isLarge,
+                )
             }
             .toGridCells(columns)
     }

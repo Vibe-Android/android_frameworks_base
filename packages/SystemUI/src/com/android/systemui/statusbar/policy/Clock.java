@@ -109,8 +109,17 @@ public class Clock extends TextView implements
     private static final int AM_PM_STYLE_GONE    = 2;
 
     private int mAmPmStyle = AM_PM_STYLE_GONE;
+    private boolean mIsStatusBarClock;
     private boolean mShowSeconds;
+    private boolean mShowDate;
+    private int mDateFormat = com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_STATUSBAR_CLOCK_DATE_FORMAT;
     private ContentObserver mContentObserver;
+    private final ContentObserver mVibeClockObserver = new ContentObserver(null) {
+        @Override
+        public void onChange(boolean selfChange) {
+            post(() -> updateVibeClockSettings());
+        }
+    };
     private Handler mSecondsHandler;
 
     // Tracks config changes that will make the clock change dimensions
@@ -127,6 +136,7 @@ public class Clock extends TextView implements
                 @Override
                 public void onUserChanged(int newUser, @NonNull Context userContext) {
                     mCurrentUserId = newUser;
+                    updateVibeClockSettings();
                     updateClock();
                 }
             };
@@ -143,6 +153,7 @@ public class Clock extends TextView implements
                 R.styleable.Clock,
                 0, 0);
         try {
+            mIsStatusBarClock = a.getBoolean(R.styleable.Clock_isStatusBarClock, false);
             mAmPmStyle = readClockAmPm(context);
             mContentObserver = new ContentObserver(null) {
                 @Override
@@ -229,6 +240,20 @@ public class Clock extends TextView implements
             mContext.getContentResolver().registerContentObserver(
                     LineageSettings.System.getUriFor(LineageSettings.System.STATUS_BAR_AM_PM),
                     false, mContentObserver);
+            if (mIsStatusBarClock) {
+                mContext.getContentResolver().registerContentObserver(
+                        android.provider.Settings.System.getUriFor(
+                                com.android.systemui.vibe.VibeSettingsConstants.KEY_STATUSBAR_CLOCK_SECONDS),
+                        false, mVibeClockObserver, UserHandle.USER_ALL);
+                mContext.getContentResolver().registerContentObserver(
+                        android.provider.Settings.System.getUriFor(
+                                com.android.systemui.vibe.VibeSettingsConstants.KEY_STATUSBAR_CLOCK_DATE),
+                        false, mVibeClockObserver, UserHandle.USER_ALL);
+                mContext.getContentResolver().registerContentObserver(
+                        android.provider.Settings.System.getUriFor(
+                                com.android.systemui.vibe.VibeSettingsConstants.KEY_STATUSBAR_CLOCK_DATE_FORMAT),
+                        false, mVibeClockObserver, UserHandle.USER_ALL);
+            }
             mCommandQueue.addCallback(this);
             mUserTracker.addCallback(mUserChangedCallback, mContext.getMainExecutor());
             mCurrentUserId = mUserTracker.getUserId();
@@ -240,6 +265,7 @@ public class Clock extends TextView implements
         mDateTimePatternGenerator = null;
 
         // Make sure we update to the current time
+        updateVibeClockSettings();
         updateClock();
         if (!StatusBarRootModernization.isEnabled()) {
             updateClockVisibility();
@@ -262,10 +288,39 @@ public class Clock extends TextView implements
             mBroadcastDispatcher.unregisterReceiver(mIntentReceiver);
             mAttached = false;
             mContext.getContentResolver().unregisterContentObserver(mContentObserver);
+            if (mIsStatusBarClock) {
+                mContext.getContentResolver().unregisterContentObserver(mVibeClockObserver);
+            }
             Dependency.get(TunerService.class).removeTunable(this);
             mCommandQueue.removeCallback(this);
             mUserTracker.removeCallback(mUserChangedCallback);
         }
+    }
+
+    private void updateVibeClockSettings() {
+        if (!mIsStatusBarClock) return;
+        boolean showSeconds = android.provider.Settings.System.getIntForUser(
+                mContext.getContentResolver(),
+                com.android.systemui.vibe.VibeSettingsConstants.KEY_STATUSBAR_CLOCK_SECONDS,
+                com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_STATUSBAR_CLOCK_SECONDS,
+                mCurrentUserId) == 1;
+        mShowDate = android.provider.Settings.System.getIntForUser(
+                mContext.getContentResolver(),
+                com.android.systemui.vibe.VibeSettingsConstants.KEY_STATUSBAR_CLOCK_DATE,
+                com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_STATUSBAR_CLOCK_DATE,
+                mCurrentUserId) == 1;
+        mDateFormat = android.provider.Settings.System.getIntForUser(
+                mContext.getContentResolver(),
+                com.android.systemui.vibe.VibeSettingsConstants.KEY_STATUSBAR_CLOCK_DATE_FORMAT,
+                com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_STATUSBAR_CLOCK_DATE_FORMAT,
+                mCurrentUserId);
+        mContentDescriptionFormatString = "";
+        mDateTimePatternGenerator = null;
+        if (mShowSeconds != showSeconds) {
+            mShowSeconds = showSeconds;
+            updateShowSeconds();
+        }
+        updateClock(true);
     }
 
     private final BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
@@ -351,7 +406,37 @@ public class Clock extends TextView implements
         if (forceTextUpdate || !TextUtils.equals(smallTime, getText())) {
             setText(smallTime);
         }
-        setContentDescription(mContentDescriptionFormat.format(mCalendar.getTime()));
+        if (mContentDescriptionFormat != null && mCalendar != null) {
+            if (mIsStatusBarClock && mShowDate && mDateTimePatternGenerator != null) {
+                boolean is24 = DateFormat.is24HourFormat(getContext(), mCurrentUserId);
+                String formatSkeleton = mShowSeconds
+                        ? (is24 ? "Hms" : "hms")
+                        : (is24 ? "Hm" : "hm");
+                final String dateSkeleton;
+                switch (mDateFormat) {
+                    case 1:
+                        dateSkeleton = "MMMMd ";
+                        break;
+                    case 2:
+                        dateSkeleton = "EEEE ";
+                        break;
+                    case 3:
+                        dateSkeleton = "EEEEMMMMd ";
+                        break;
+                    case 0:
+                    default:
+                        dateSkeleton = "MMMMd ";
+                        break;
+                }
+                String fullDatePattern = mDateTimePatternGenerator.getBestPattern(dateSkeleton + formatSkeleton);
+                SimpleDateFormat fullFormat = new SimpleDateFormat(fullDatePattern,
+                        getContext().getResources().getConfiguration().locale);
+                fullFormat.setTimeZone(mCalendar.getTimeZone());
+                setContentDescription(fullFormat.format(mCalendar.getTime()));
+            } else {
+                setContentDescription(mContentDescriptionFormat.format(mCalendar.getTime()));
+            }
+        }
     }
 
     final void updateClock() {
@@ -443,7 +528,7 @@ public class Clock extends TextView implements
     }
 
     private void updateShowSeconds() {
-        if (mShowSeconds) {
+        if (mIsStatusBarClock && mShowSeconds) {
             // Wait until we have a display to start trying to show seconds.
             if (mSecondsHandler == null && getDisplay() != null) {
                 mSecondsHandler = new Handler();
@@ -456,7 +541,6 @@ public class Clock extends TextView implements
                 filter.addAction(Intent.ACTION_SCREEN_ON);
                 mBroadcastDispatcher.registerReceiver(mScreenReceiver, filter);
             }
-            setFontFeatureSettings("tnum");
         } else {
             if (mSecondsHandler != null) {
                 mScreenReceiverRegistered = false;
@@ -465,7 +549,6 @@ public class Clock extends TextView implements
                 mSecondsHandler = null;
                 updateClock();
             }
-            setFontFeatureSettings(null);
         }
     }
 
@@ -522,6 +605,7 @@ public class Clock extends TextView implements
             mClockFormat = new SimpleDateFormat(format);
         }
         String result = mClockFormat.format(mCalendar.getTime());
+        CharSequence timeText = result;
 
         if (mAmPmStyle != AM_PM_STYLE_NORMAL) {
             int magic1 = result.indexOf(MAGIC1);
@@ -539,11 +623,39 @@ public class Clock extends TextView implements
                     formatted.delete(magic2, magic2 + 1);
                     formatted.delete(magic1, magic1 + 1);
                 }
-                return formatted;
+                timeText = formatted;
             }
         }
 
-        return result;
+        if (mIsStatusBarClock && mShowDate && mDateTimePatternGenerator != null) {
+            final String dateSkeleton;
+            switch (mDateFormat) {
+                case 1:
+                    dateSkeleton = "dMMM";
+                    break;
+                case 2:
+                    dateSkeleton = "EEE";
+                    break;
+                case 3:
+                    dateSkeleton = "EdMMM";
+                    break;
+                case 0:
+                default:
+                    dateSkeleton = "dM";
+                    break;
+            }
+            String datePattern = mDateTimePatternGenerator.getBestPattern(dateSkeleton);
+            SimpleDateFormat dateFormat = new SimpleDateFormat(datePattern,
+                    context.getResources().getConfiguration().locale);
+            dateFormat.setTimeZone(mCalendar.getTimeZone());
+            String dateString = dateFormat.format(mCalendar.getTime());
+            SpannableStringBuilder fullText = new SpannableStringBuilder(dateString);
+            fullText.append(" ");
+            fullText.append(timeText);
+            return fullText;
+        }
+
+        return timeText;
 
     }
 

@@ -337,6 +337,7 @@ fun ContentScope.Tile(
                         squishiness = squishiness,
                         isVisible = isVisible,
                         textScale = { contentBounceable.textBounceScale },
+                        showLabels = com.android.systemui.qs.panels.ui.compose.LocalShowTileLabels.current,
                         modifier =
                             Modifier.largeTilePadding(isDualTarget = uiState.handlesLongClick),
                     )
@@ -415,6 +416,7 @@ fun LargeStaticTile(
             sideDrawable = null,
             colors = colors,
             squishiness = { 1f },
+            showLabels = com.android.systemui.qs.panels.ui.compose.LocalShowTileLabels.current,
         )
     }
 }

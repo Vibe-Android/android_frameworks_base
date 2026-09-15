@@ -16,10 +16,26 @@
 
 package com.android.systemui.qs.panels.ui.compose
 
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.os.UserHandle
+import android.provider.Settings
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import com.android.compose.animation.scene.ContentScope
 import com.android.systemui.qs.panels.ui.viewmodel.TileGridViewModel
+import com.android.systemui.vibe.VibeSettingsConstants
+
+val LocalShowTileLabels = compositionLocalOf { true }
 
 /**
  * Displays a grid of tiles with an optional reveal animation.
@@ -33,14 +49,46 @@ fun ContentScope.TileGrid(
     listening: () -> Boolean = { true },
     enableRevealEffect: Boolean = false,
 ) {
-    val gridLayout = viewModel.gridLayout
-    val tiles = viewModel.tileViewModels
-    with(gridLayout) {
-        TileGrid(
-            tiles = tiles,
-            modifier = modifier,
-            listening = listening,
-            enableRevealEffect = enableRevealEffect,
+    val context = LocalContext.current
+    var showLabels by remember {
+        mutableStateOf(
+            Settings.System.getIntForUser(
+                context.contentResolver,
+                VibeSettingsConstants.KEY_QS_SHOW_LABELS,
+                VibeSettingsConstants.DEFAULT_QS_SHOW_LABELS,
+                UserHandle.USER_CURRENT
+            ) == 1
         )
+    }
+
+    DisposableEffect(context) {
+        val uri = Settings.System.getUriFor(VibeSettingsConstants.KEY_QS_SHOW_LABELS)
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                showLabels = Settings.System.getIntForUser(
+                    context.contentResolver,
+                    VibeSettingsConstants.KEY_QS_SHOW_LABELS,
+                    VibeSettingsConstants.DEFAULT_QS_SHOW_LABELS,
+                    UserHandle.USER_CURRENT
+                ) == 1
+            }
+        }
+        context.contentResolver.registerContentObserver(uri, false, observer, UserHandle.USER_ALL)
+        onDispose {
+            context.contentResolver.unregisterContentObserver(observer)
+        }
+    }
+
+    CompositionLocalProvider(LocalShowTileLabels provides showLabels) {
+        val gridLayout = viewModel.gridLayout
+        val tiles = viewModel.tileViewModels
+        with(gridLayout) {
+            TileGrid(
+                tiles = tiles,
+                modifier = modifier,
+                listening = listening,
+                enableRevealEffect = enableRevealEffect,
+            )
+        }
     }
 }

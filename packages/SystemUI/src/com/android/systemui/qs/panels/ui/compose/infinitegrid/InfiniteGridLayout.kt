@@ -86,12 +86,18 @@ constructor(
 
         val columns = viewModel.columnsWithMediaViewModel.columns
         val largeTilesSpan = viewModel.columnsWithMediaViewModel.largeSpan
+        val compactTilesSpan = viewModel.columnsWithMediaViewModel.compactSpan
         val largeTiles by viewModel.iconTilesViewModel.largeTilesState
         // Tiles or largeTiles may be updated while this is composed, so listen to any changes
         val sizedTiles =
-            remember(tiles, largeTiles, largeTilesSpan) {
+            remember(tiles, largeTiles, largeTilesSpan, compactTilesSpan) {
                 tiles.map {
-                    SizedTileImpl(it, if (largeTiles.contains(it.spec)) largeTilesSpan else 1)
+                    val isLarge = largeTiles.contains(it.spec)
+                    SizedTileImpl(
+                        it,
+                        if (isLarge) largeTilesSpan else compactTilesSpan,
+                        isIcon = !isLarge,
+                    )
                 }
             }
         val squishiness by viewModel.squishinessViewModel.squishiness.collectAsStateWithLifecycle()
@@ -204,16 +210,18 @@ constructor(
             remember(topBarActionsViewModel) { topBarActionsViewModel.actions.toMutableStateList() }
         val columns = columnsViewModel.columns
         val largeTilesSpan = columnsViewModel.largeSpan
+        val compactSpan = columnsViewModel.compactSpan
         val largeTiles by viewModel.iconTilesViewModel.largeTilesState
 
         val currentTiles by rememberUpdatedState(tiles.filter { it.isCurrent })
         val listState =
-            remember(columns, largeTilesSpan) {
+            remember(columns, largeTilesSpan, compactSpan) {
                 EditTileListState(
                     currentTiles,
                     largeTiles,
                     columns = columns,
                     largeTilesSpan = largeTilesSpan,
+                    compactSpan = compactSpan,
                 )
             }
         LaunchedEffect(currentTiles, largeTiles) { listState.updateTiles(currentTiles, largeTiles) }

@@ -71,12 +71,30 @@ constructor(
             initialValue = false,
         )
 
+    private val isCustomColumns by
+        hydrator.hydratedStateOf(
+            traceName = "isCustomColumns",
+            source = interactor.isCustomColumns,
+            initialValue = false,
+        )
+
+    val compactSpan: Int
+        get() = if (isCustomColumns) 2 else 1
+
     val largeSpan: Int
         get() =
-            if (useExtraLargeTiles) {
-                if (columns > maxSpan) columns / 2 else columns
+            if (isCustomColumns) {
+                if (mediaInRowInLandscapeViewModel?.shouldMediaShowInRow == true) {
+                    columns
+                } else {
+                    columns / 2
+                }
             } else {
-                largeTileSpanInteractor.defaultTileMaxWidth
+                if (useExtraLargeTiles) {
+                    if (columns > maxSpan) columns / 2 else columns
+                } else {
+                    largeTileSpanInteractor.defaultTileMaxWidth
+                }
             }
 
     private val mediaInRowInLandscapeViewModel =

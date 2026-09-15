@@ -151,6 +151,20 @@ public class TileLayout extends ViewGroup implements QSTileLayout {
         int columns = useSmallLandscapeLockscreenResources()
                 ? res.getInteger(R.integer.small_land_lockscreen_quick_settings_num_columns)
                 : res.getInteger(R.integer.quick_settings_num_columns);
+
+        int vibeColumns = android.provider.Settings.System.getIntForUser(
+                mContext.getContentResolver(),
+                com.android.systemui.vibe.VibeSettingsConstants.KEY_QS_COLUMNS,
+                com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_QS_COLUMNS,
+                android.os.UserHandle.USER_CURRENT);
+        if (vibeColumns >= 3 && vibeColumns <= 6 && !useSmallLandscapeLockscreenResources()) {
+            if (res.getConfiguration().orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+                columns = Math.max(columns, vibeColumns);
+            } else {
+                columns = vibeColumns;
+            }
+        }
+
         mResourceColumns = Math.max(1, columns);
         mResourceCellHeight = res.getDimensionPixelSize(mResourceCellHeightResId);
         mCellMarginHorizontal = res.getDimensionPixelSize(R.dimen.qs_tile_margin_horizontal);
@@ -190,7 +204,16 @@ public class TileLayout extends ViewGroup implements QSTileLayout {
 
     private boolean updateColumns() {
         int oldColumns = mColumns;
-        mColumns = Math.min(mResourceColumns, mMaxColumns);
+        int vibeColumns = android.provider.Settings.System.getIntForUser(
+                mContext.getContentResolver(),
+                com.android.systemui.vibe.VibeSettingsConstants.KEY_QS_COLUMNS,
+                com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_QS_COLUMNS,
+                android.os.UserHandle.USER_CURRENT);
+        if (vibeColumns >= 3 && vibeColumns <= 6 && !useSmallLandscapeLockscreenResources()) {
+            mColumns = mResourceColumns;
+        } else {
+            mColumns = Math.min(mResourceColumns, mMaxColumns);
+        }
         return oldColumns != mColumns;
     }
 
@@ -202,6 +225,17 @@ public class TileLayout extends ViewGroup implements QSTileLayout {
         final int numTiles = mRecords.size();
         final int width = MeasureSpec.getSize(widthMeasureSpec);
         final int availableWidth = width - getPaddingStart() - getPaddingEnd();
+
+        final int minCellWidth = mContext.getResources().getDimensionPixelSize(R.dimen.qs_icon_size);
+        while (mColumns > 1) {
+            int testGaps = mColumns - 1;
+            int testWidth = (availableWidth - (mCellMarginHorizontal * testGaps) - mSidePadding * 2) / mColumns;
+            if (testWidth >= minCellWidth) {
+                break;
+            }
+            mColumns--;
+        }
+
         final int heightMode = MeasureSpec.getMode(heightMeasureSpec);
         if (heightMode == MeasureSpec.UNSPECIFIED) {
             mRows = (numTiles + mColumns - 1) / mColumns;

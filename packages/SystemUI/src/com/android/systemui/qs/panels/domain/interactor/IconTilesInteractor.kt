@@ -16,8 +16,15 @@
 
 package com.android.systemui.qs.panels.domain.interactor
 
+import android.content.Context
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.os.UserHandle
+import android.provider.Settings
 import com.android.internal.logging.UiEventLogger
 import com.android.systemui.dagger.SysUISingleton
+import com.android.systemui.dagger.qualifiers.Application
 import com.android.systemui.dagger.qualifiers.Background
 import com.android.systemui.log.LogBuffer
 import com.android.systemui.log.core.LogLevel
@@ -27,9 +34,16 @@ import com.android.systemui.qs.panels.shared.model.PanelsLog
 import com.android.systemui.qs.pipeline.domain.interactor.CurrentTilesInteractor
 import com.android.systemui.qs.pipeline.shared.TileSpec
 import com.android.systemui.qs.pipeline.shared.metricSpec
+import com.android.systemui.utils.coroutines.flow.conflatedCallbackFlow
+import com.android.systemui.vibe.VibeSettingsConstants
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 
@@ -38,6 +52,7 @@ import kotlinx.coroutines.flow.stateIn
 class IconTilesInteractor
 @Inject
 constructor(
+    @Application private val applicationContext: Context,
     private val repo: DefaultLargeTilesRepository,
     private val currentTilesInteractor: CurrentTilesInteractor,
     private val preferencesInteractor: QSPreferencesInteractor,
@@ -45,11 +60,51 @@ constructor(
     @PanelsLog private val logBuffer: LogBuffer,
     @Background private val scope: CoroutineScope,
 ) {
+    private val vibeForceCompactSetting: Flow<Boolean> = conflatedCallbackFlow {
+        val uri = Settings.System.getUriFor(VibeSettingsConstants.KEY_QS_FORCE_COMPACT_TILES)
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                val value = Settings.System.getIntForUser(
+                    applicationContext.contentResolver,
+                    VibeSettingsConstants.KEY_QS_FORCE_COMPACT_TILES,
+                    VibeSettingsConstants.DEFAULT_QS_FORCE_COMPACT_TILES,
+                    UserHandle.USER_CURRENT
+                ) == 1
+                trySend(value)
+            }
+        }
+        applicationContext.contentResolver.registerContentObserver(uri, false, observer, UserHandle.USER_ALL)
+        val initial = Settings.System.getIntForUser(
+            applicationContext.contentResolver,
+            VibeSettingsConstants.KEY_QS_FORCE_COMPACT_TILES,
+            VibeSettingsConstants.DEFAULT_QS_FORCE_COMPACT_TILES,
+            UserHandle.USER_CURRENT
+        ) == 1
+        trySend(initial)
+        awaitClose {
+            applicationContext.contentResolver.unregisterContentObserver(observer)
+        }
+    }.distinctUntilChanged()
 
-    val largeTilesSpecs =
-        preferencesInteractor.largeTilesSpecs
+    val largeTilesSpecs: StateFlow<Set<TileSpec>> =
+        combine(
+            preferencesInteractor.largeTilesSpecs,
+            vibeForceCompactSetting,
+        ) { specs, forceCompact ->
+            if (forceCompact) emptySet() else specs
+        }
             .onEach { logChange(it) }
-            .stateIn(scope, SharingStarted.Eagerly, repo.defaultLargeTiles)
+            .stateIn(
+                scope,
+                SharingStarted.Eagerly,
+                if (Settings.System.getIntForUser(
+                        applicationContext.contentResolver,
+                        VibeSettingsConstants.KEY_QS_FORCE_COMPACT_TILES,
+                        VibeSettingsConstants.DEFAULT_QS_FORCE_COMPACT_TILES,
+                        UserHandle.USER_CURRENT
+                    ) == 1
+                ) emptySet() else repo.defaultLargeTiles
+            )
 
     fun isIconTile(spec: TileSpec): Boolean = !largeTilesSpecs.value.contains(spec)
 

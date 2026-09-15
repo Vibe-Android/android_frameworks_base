@@ -16,9 +16,16 @@
 
 package com.android.systemui.qs.ui.viewmodel
 
+import android.content.Context
+import android.database.ContentObserver
+import android.os.Handler
+import android.os.Looper
+import android.os.UserHandle
+import android.provider.Settings
 import android.view.Display
 import androidx.compose.runtime.getValue
 import com.android.systemui.brightness.ui.viewmodel.BrightnessSliderViewModel
+import com.android.systemui.dagger.qualifiers.Application
 import com.android.systemui.lifecycle.ExclusiveActivatable
 import com.android.systemui.lifecycle.Hydrator
 import com.android.systemui.media.controls.domain.pipeline.interactor.MediaCarouselInteractor
@@ -33,12 +40,17 @@ import com.android.systemui.qs.panels.ui.viewmodel.TileGridViewModel
 import com.android.systemui.shade.domain.interactor.ShadeDisplaysInteractor
 import com.android.systemui.shade.shared.flag.ShadeWindowGoesAround
 import com.android.systemui.shade.ui.viewmodel.ShadeHeaderViewModel
+import com.android.systemui.utils.coroutines.flow.conflatedCallbackFlow
+import com.android.systemui.vibe.VibeSettingsConstants
 import dagger.Lazy
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -46,6 +58,7 @@ import kotlinx.coroutines.launch
 class QuickSettingsContainerViewModel
 @AssistedInject
 constructor(
+    @Application private val applicationContext: Context,
     brightnessSliderViewModelFactory: BrightnessSliderViewModel.Factory,
     shadeHeaderViewModelFactory: ShadeHeaderViewModel.Factory,
     tileGridViewModelFactory: TileGridViewModel.Factory,
@@ -58,19 +71,52 @@ constructor(
     mediaInRowInLandscapeViewModelFactory: MediaInRowInLandscapeViewModel.Factory,
 ) : ExclusiveActivatable() {
 
+    private fun isVibeBrightnessSliderVisible(): Boolean {
+        return Settings.System.getIntForUser(
+            applicationContext.contentResolver,
+            VibeSettingsConstants.KEY_QS_SHOW_BRIGHTNESS_SLIDER,
+            VibeSettingsConstants.DEFAULT_QS_SHOW_BRIGHTNESS_SLIDER,
+            UserHandle.USER_CURRENT,
+        ) != 0
+    }
+
+    private val vibeBrightnessSliderSetting: Flow<Boolean> = conflatedCallbackFlow {
+        val uri = Settings.System.getUriFor(VibeSettingsConstants.KEY_QS_SHOW_BRIGHTNESS_SLIDER)
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                trySend(isVibeBrightnessSliderVisible())
+            }
+        }
+        applicationContext.contentResolver.registerContentObserver(
+            uri,
+            false,
+            observer,
+            UserHandle.USER_ALL,
+        )
+        trySend(isVibeBrightnessSliderVisible())
+        awaitClose {
+            applicationContext.contentResolver.unregisterContentObserver(observer)
+        }
+    }
+
     private val hydrator = Hydrator("QuickSettingsContainerViewModel.hydrator")
 
     val isBrightnessSliderVisible by
         hydrator.hydratedStateOf(
             traceName = "isBrightnessSliderVisible",
-            initialValue = shouldBrightnessSliderBeVisible(Display.DEFAULT_DISPLAY),
+            initialValue = shouldBrightnessSliderBeVisible(Display.DEFAULT_DISPLAY) && isVibeBrightnessSliderVisible(),
             source =
-                if (ShadeWindowGoesAround.isEnabled) {
-                    shadeDisplaysInteractor.get().pendingDisplayId.map {
-                        shouldBrightnessSliderBeVisible(it)
-                    }
-                } else {
-                    flowOf(true)
+                combine(
+                    if (ShadeWindowGoesAround.isEnabled) {
+                        shadeDisplaysInteractor.get().pendingDisplayId.map {
+                            shouldBrightnessSliderBeVisible(it)
+                        }
+                    } else {
+                        flowOf(true)
+                    },
+                    vibeBrightnessSliderSetting,
+                ) { shouldShowDisplay, showVibeSetting ->
+                    shouldShowDisplay && showVibeSetting
                 },
         )
 

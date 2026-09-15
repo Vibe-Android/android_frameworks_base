@@ -21,11 +21,19 @@ import static com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Configuration.Orientation;
+import android.database.ContentObserver;
 import android.metrics.LogMaker;
+import android.os.UserHandle;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
+
+import com.android.systemui.Dependency;
+import com.android.systemui.settings.UserTracker;
+import com.android.systemui.vibe.VibeSettingsConstants;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.logging.MetricsLogger;
@@ -115,6 +123,44 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
     private DisposableHandle mJavaAdapterDisposableHandle;
 
     private boolean mLastListening;
+
+    private final ContentObserver mVibeSettingsObserver = new ContentObserver(null) {
+        @Override
+        public void onChange(boolean selfChange) {
+            if (mView != null) {
+                mView.post(() -> updateVibeCustomizations());
+            }
+        }
+    };
+
+    private final UserTracker.Callback mVibeUserTrackerCallback =
+            new UserTracker.Callback() {
+                @Override
+                public void onUserChanged(int newUser, @NonNull Context userContext) {
+                    if (mView != null) {
+                        mView.post(() -> updateVibeCustomizations());
+                    }
+                }
+            };
+
+    private void updateVibeCustomizations() {
+        boolean showLabels = Settings.System.getIntForUser(
+                getContext().getContentResolver(),
+                VibeSettingsConstants.KEY_QS_SHOW_LABELS,
+                VibeSettingsConstants.DEFAULT_QS_SHOW_LABELS,
+                UserHandle.USER_CURRENT) != 0;
+
+        for (TileRecord record : mRecords) {
+            if (record.tileView instanceof QSTileViewImpl) {
+                ((QSTileViewImpl) record.tileView).setShowLabels(showLabels);
+            }
+        }
+
+        if (mView.getTileLayout() != null) {
+            mView.getTileLayout().updateResources();
+        }
+        mView.requestLayout();
+    }
 
     private final ConfigurationListener mConfigurationListener = new ConfigurationListener() {
         @Override
@@ -270,6 +316,18 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
 
         mDumpManager.registerDumpable(mView.getDumpableTag(), this);
 
+        try {
+            getContext().getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor(VibeSettingsConstants.KEY_QS_COLUMNS),
+                    false, mVibeSettingsObserver, UserHandle.USER_ALL);
+            getContext().getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor(VibeSettingsConstants.KEY_QS_SHOW_LABELS),
+                    false, mVibeSettingsObserver, UserHandle.USER_ALL);
+            Dependency.get(UserTracker.class).addCallback(
+                    mVibeUserTrackerCallback, getContext().getMainExecutor());
+        } catch (Exception ignored) {}
+        updateVibeCustomizations();
+
         setListening(mLastListening);
     }
 
@@ -285,6 +343,11 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
 
     @Override
     protected void onViewDetached() {
+        try {
+            getContext().getContentResolver().unregisterContentObserver(mVibeSettingsObserver);
+            Dependency.get(UserTracker.class).removeCallback(mVibeUserTrackerCallback);
+        } catch (Exception ignored) {}
+
         mQSLogger.logOnViewDetached(mLastOrientation, mView.getDumpableTag());
         if (ShadeWindowGoesAround.isEnabled()) {
             mConfigurationController.removeCallback(mConfigurationListener);
@@ -390,6 +453,12 @@ public abstract class QSPanelControllerBase<T extends QSPanel> extends ViewContr
             QSTileViewImpl qsTileView = (QSTileViewImpl) (r.tileView);
             if (qsTileView != null) {
                 qsTileView.setQsLogger(mQSLogger);
+                boolean showLabels = Settings.System.getIntForUser(
+                        getContext().getContentResolver(),
+                        VibeSettingsConstants.KEY_QS_SHOW_LABELS,
+                        VibeSettingsConstants.DEFAULT_QS_SHOW_LABELS,
+                        UserHandle.USER_CURRENT) != 0;
+                qsTileView.setShowLabels(showLabels);
             }
         } catch (ClassCastException e) {
             Log.e(TAG, "Failed to cast QSTileView to QSTileViewImpl", e);

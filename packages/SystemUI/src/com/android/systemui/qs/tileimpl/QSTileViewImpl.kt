@@ -100,6 +100,28 @@ constructor(
     private var position: Int = INVALID
     private var hasLongClickEffect: Boolean = true
 
+    var showLabels: Boolean = true
+        set(value) {
+            if (field != value) {
+                field = value
+                updateLabelsVisibility()
+            }
+        }
+
+    private fun updateLabelsVisibility() {
+        if (!::labelContainer.isInitialized || !::sideView.isInitialized) return
+        if (showLabels) {
+            labelContainer.visibility = View.VISIBLE
+            sideView.visibility = View.VISIBLE
+            secondaryLabel.visibility = if (TextUtils.isEmpty(secondaryLabel.text)) View.GONE else View.VISIBLE
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        } else {
+            labelContainer.visibility = View.GONE
+            sideView.visibility = View.GONE
+            gravity = Gravity.CENTER
+        }
+    }
+
     override fun setPosition(position: Int) {
         this.position = position
     }
@@ -244,6 +266,21 @@ constructor(
 
         createAndAddLabels()
         createAndAddSideView()
+
+        val showLabelsSetting = android.provider.Settings.System.getIntForUser(
+            context.contentResolver,
+            com.android.systemui.vibe.VibeSettingsConstants.KEY_QS_SHOW_LABELS,
+            com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_QS_SHOW_LABELS,
+            android.os.UserHandle.USER_CURRENT
+        ) != 0
+        val forceCompactSetting = android.provider.Settings.System.getIntForUser(
+            context.contentResolver,
+            com.android.systemui.vibe.VibeSettingsConstants.KEY_QS_FORCE_COMPACT_TILES,
+            com.android.systemui.vibe.VibeSettingsConstants.DEFAULT_QS_FORCE_COMPACT_TILES,
+            android.os.UserHandle.USER_CURRENT
+        ) != 0
+        showLabels = showLabelsSetting && !forceCompactSetting
+        updateLabelsVisibility()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration?) {
@@ -707,12 +744,21 @@ constructor(
         }
         if (!Objects.equals(secondaryLabel.text, state.secondaryLabel)) {
             secondaryLabel.text = state.secondaryLabel
+        }
+        if (showLabels) {
+            labelContainer.visibility = VISIBLE
+            sideView.visibility = VISIBLE
             secondaryLabel.visibility =
                 if (TextUtils.isEmpty(state.secondaryLabel)) {
                     GONE
                 } else {
                     VISIBLE
                 }
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+        } else {
+            labelContainer.visibility = GONE
+            sideView.visibility = GONE
+            gravity = Gravity.CENTER
         }
 
         // Colors

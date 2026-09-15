@@ -382,24 +382,26 @@ private fun ContentScope.QuickSettingsLayout(
                 modifier = Modifier,
             )
 
-            if (qsContainerViewModel.showMedia) {
+            if (qsContainerViewModel.showMedia && qsContainerViewModel.isBrightnessSliderVisible) {
                 VerticalSeparator(QuickSettingsShade.Dimensions.Padding)
             }
 
-            Box(
-                Modifier.systemGestureExclusionInShade(
-                    enabled = { layoutState.transitionState is TransitionState.Idle }
-                )
-            ) {
-                BrightnessSliderContainer(
-                    viewModel = qsContainerViewModel.brightnessSliderViewModel,
-                    containerColors =
-                        ContainerColors(
-                            idleColor = Color.Transparent,
-                            mirrorColor = OverlayShade.Colors.panelBackground(isTransparencyEnabled),
-                        ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            if (qsContainerViewModel.isBrightnessSliderVisible) {
+                Box(
+                    Modifier.systemGestureExclusionInShade(
+                        enabled = { layoutState.transitionState is TransitionState.Idle }
+                    )
+                ) {
+                    BrightnessSliderContainer(
+                        viewModel = qsContainerViewModel.brightnessSliderViewModel,
+                        containerColors =
+                            ContainerColors(
+                                idleColor = Color.Transparent,
+                                mirrorColor = OverlayShade.Colors.panelBackground(isTransparencyEnabled),
+                            ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             if (volumeSliderViewModel != null) {

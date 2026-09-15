@@ -130,12 +130,13 @@ fun LargeTileContent(
     textScale: () -> Float = { 1f },
     toggleClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    showLabels: Boolean = true,
 ) {
     val isDualTarget = toggleClick != null
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = tileHorizontalArrangement(),
-        modifier = modifier,
+        horizontalArrangement = if (showLabels) tileHorizontalArrangement() else Arrangement.Center,
+        modifier = if (showLabels) modifier else modifier.fillMaxWidth(),
     ) {
         // Icon
         val longPressLabel = longPressLabelSettings().takeIf { onLongClick != null }
@@ -177,22 +178,24 @@ fun LargeTileContent(
             )
         }
 
-        // Labels
-        LargeTileLabels(
-            label = label,
-            secondaryLabel = secondaryLabel,
-            colors = colors,
-            accessibilityUiState = accessibilityUiState,
-            isVisible = isVisible,
-            modifier = Modifier.weight(1f).bounceScale(TransformOrigin(0f, .5f), textScale),
-        )
-
-        if (sideDrawable != null) {
-            Image(
-                painter = rememberDrawablePainter(sideDrawable),
-                contentDescription = null,
-                modifier = Modifier.width(SideIconWidth).height(SideIconHeight),
+        if (showLabels) {
+            // Labels
+            LargeTileLabels(
+                label = label,
+                secondaryLabel = secondaryLabel,
+                colors = colors,
+                accessibilityUiState = accessibilityUiState,
+                isVisible = isVisible,
+                modifier = Modifier.weight(1f).bounceScale(TransformOrigin(0f, .5f), textScale),
             )
+
+            if (sideDrawable != null) {
+                Image(
+                    painter = rememberDrawablePainter(sideDrawable),
+                    contentDescription = null,
+                    modifier = Modifier.width(SideIconWidth).height(SideIconHeight),
+                )
+            }
         }
     }
 }
