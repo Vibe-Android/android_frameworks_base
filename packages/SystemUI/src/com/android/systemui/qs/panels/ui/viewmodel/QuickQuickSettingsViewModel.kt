@@ -78,12 +78,22 @@ constructor(
     private val largeTilesSpan: Int
         get() = qsColumnsViewModel.largeSpan
 
+    private val compactTilesSpan: Int
+        get() = qsColumnsViewModel.compactSpan
+
     private val currentTiles by
         hydrator.hydratedStateOf(traceName = "currentTiles", source = tilesInteractor.currentTiles)
 
     val tileViewModels by derivedStateOf {
         currentTiles
-            .map { SizedTileImpl(TileViewModel(it.tile, it.spec), it.spec.width()) }
+            .map {
+                val isLarge = largeTiles.contains(it.spec)
+                SizedTileImpl(
+                    TileViewModel(it.tile, it.spec),
+                    if (isLarge) largeTilesSpan else compactTilesSpan,
+                    isIcon = !isLarge,
+                )
+            }
             .let { splitInRowsSequence(it, columns).take(rows).toList().flatten() }
     }
 
@@ -101,7 +111,8 @@ constructor(
         fun create(): QuickQuickSettingsViewModel
     }
 
-    private fun TileSpec.width(): Int = if (largeTiles.contains(this)) largeTilesSpan else 1
+    private fun TileSpec.width(): Int =
+        if (largeTiles.contains(this)) largeTilesSpan else compactTilesSpan
 
     companion object {
         /** Behavior of the media carousel in quick quick settings */

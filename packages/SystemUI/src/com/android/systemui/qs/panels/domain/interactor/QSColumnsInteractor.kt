@@ -49,5 +49,7 @@ constructor(
             }
             .stateIn(scope, SharingStarted.WhileSubscribed(), repo.defaultColumns)
 
-    val isCustomColumns: kotlinx.coroutines.flow.Flow<Boolean> = repo.isCustomColumns
+    val isCustomColumns: StateFlow<Boolean> =
+        repo.isCustomColumns
+            .stateIn(scope, SharingStarted.Eagerly, repo.defaultIsCustomColumns)
 }

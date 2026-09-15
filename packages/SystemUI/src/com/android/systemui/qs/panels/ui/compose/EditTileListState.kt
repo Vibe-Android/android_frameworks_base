@@ -93,7 +93,7 @@ class EditTileListState(
 
             if (cell.isIcon == toIcon) return
 
-            _tiles[fromIndex] = cell.copy(width = if (toIcon) 1 else largeTilesSpan)
+            _tiles[fromIndex] = cell.copy(width = if (toIcon) compactSpan else largeTilesSpan)
             regenerateGrid(fromIndex)
         }
     }

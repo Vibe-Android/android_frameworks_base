@@ -75,7 +75,7 @@ constructor(
         hydrator.hydratedStateOf(
             traceName = "isCustomColumns",
             source = interactor.isCustomColumns,
-            initialValue = false,
+            initialValue = interactor.isCustomColumns.value,
         )
 
     val compactSpan: Int

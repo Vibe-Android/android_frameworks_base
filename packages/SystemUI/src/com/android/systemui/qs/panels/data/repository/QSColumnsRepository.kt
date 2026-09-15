@@ -78,6 +78,17 @@ constructor(
         }
     }.distinctUntilChanged()
 
+    val defaultIsCustomColumns: Boolean
+        get() {
+            val vibeCols = Settings.System.getIntForUser(
+                applicationContext.contentResolver,
+                VibeSettingsConstants.KEY_QS_COLUMNS,
+                VibeSettingsConstants.DEFAULT_QS_COLUMNS,
+                UserHandle.USER_CURRENT
+            )
+            return vibeCols in 3..6
+        }
+
     val isCustomColumns: Flow<Boolean> =
         vibeColumnsSetting.map { it in 3..6 }.distinctUntilChanged()
 
